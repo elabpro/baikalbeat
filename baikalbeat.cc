@@ -56,6 +56,7 @@ string es_index = "test-kafkabeat-cpp";
 int bulkSize = 10000;
 int debugLevel = 0;
 int maxThreads = 5;
+int bulkDelay = 500; // in nanosecs
 
 /// Very simple log callback (only print message to stdout)
 void logCallback(elasticlient::LogLevel logLevel, const std::string &msg) {
@@ -64,6 +65,9 @@ void logCallback(elasticlient::LogLevel logLevel, const std::string &msg) {
     }
 }
 
+/**
+ * The main thread
+ */
 void BaikalbeatThread(int threadNumber){
     struct timeval time;
     // Construct the configuration
@@ -141,6 +145,7 @@ void BaikalbeatThread(int threadNumber){
                     std::cout << "When indexing " << bulk.size() << " documents, "
                               << errors << " errors occured" << std::endl;
                     }
+                    usleep(bulkDelay);
                     if (errors > 0){
                         // retry
                         usleep(100);
@@ -159,9 +164,12 @@ void BaikalbeatThread(int threadNumber){
     }
 }
 
+/**
+ * Command line processor, options, configuration. Run threads
+ */
 int main(int argc, char* argv[])
 {
-    cout << "Baikalbeat (Kafka -> Elasticsearch beat, developed on C++), version 0.9beta+threads" << endl;
+    cout << "Baikalbeat (Kafka -> Elasticsearch beat, developed on C++), version 1.0" << endl;
     cout << "LibertyGlobal, DataOps, Eugene Arbatsky (c) 2020" << endl;
     cout << endl;
 
@@ -174,6 +182,7 @@ int main(int argc, char* argv[])
         ("elasticsearch-url,e", po::value<string>(&es_url),"elasticsearch URL (default, http://localhost:9200/)")
         ("elasticsearch-index,i", po::value<string>(&es_index),"elasticsearch index name (default, test-kafkabeat-cpp)")
         ("bulk-size,m", po::value<int>(&bulkSize),"bulkSize for Elasticsearch batches (default, 10000)")
+        ("bulk-delay,s", po::value<int>(&bulkDelay),"delay (in nanoseconds) after bulk for Elasticsearch (default, 500)")
         ("threads,n", po::value<int>(&maxThreads),"number of threads for parsing (default, 5)")
         ("debug,d", po::value<int>(&debugLevel),"debug (default, 0 - no debug)")
         ;
