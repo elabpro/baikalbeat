@@ -53,7 +53,7 @@ string brokers = "127.0.0.1:9092";
 string topic_name = "test";
 string group_id = "test";
 string es_url = "http://localhost:9200/";
-string es_index = "test-kafkabeat-cpp";
+string es_index = "";
 int bulkSize = 10000;
 int debugLevel = 0;
 int maxThreads = 5;
@@ -75,8 +75,13 @@ void BaikalbeatThread(int threadNumber){
     const char* delimiter = "\"";
     int indexKeySize = indexKey.length();
     elasticlient::SameIndexBulkData *pool [100];
+    int mode = 0; // 0 - index is defined as variable, 1 - is taken from field
 
     std::map<std::string, int> poolOfBulk;
+
+    if(es_index.length() > 0){
+        mode = 1;
+    }
 
     // Construct the configuration
     Configuration config = {
@@ -130,50 +135,43 @@ void BaikalbeatThread(int threadNumber){
                 bulkIndex++;
                 Document d;
                 std::string s = msg.get_payload();
-                // d.Parse(s.c_str());
-                // Print the key (if any)
+                std::string indexName = "";                
                 if (msg.get_key())
                 {
                     cout << msg.get_key() << " -> ";
                 }
-                // Print the payload
-                const char* s_str = s.c_str();
-                const char* pos1 = strstr(s_str,indexKey.c_str());
-                const char* pos2 = strstr((char*) (pos1 + indexKeySize +3) , delimiter);
-                std::string indexName = "";
-                size_t len = (size_t) (pos2 - pos1 - indexKeySize - 3);
-                char *result = (char*) malloc(len + 1);
-                if(result){
-                    memcpy(result,(char*)(pos1+indexKeySize+3),len);
-                    result[len] = '\0';
-                    indexName = result;
-                    free(result);
-                }else{
-                    // Skip this message
-                    continue;
-                }
-                if(indexName.length() > 0){
-                    if(poolOfBulk.find(indexName) == poolOfBulk.end()){
-                        // New index
-                        pool[poolOfBulk.size()] = new elasticlient::SameIndexBulkData(indexName, 100);
-                        poolOfBulk[indexName] = poolOfBulk.size();
+                if( mode == 1){
+                    const char* s_str = s.c_str();
+                    const char* pos1 = strstr(s_str,indexKey.c_str());
+                    const char* pos2 = strstr((char*) (pos1 + indexKeySize +3) , delimiter);
+                    size_t len = (size_t) (pos2 - pos1 - indexKeySize - 3);
+                    char *result = (char*) malloc(len + 1);
+                    if(result){
+                        memcpy(result,(char*)(pos1+indexKeySize+3),len);
+                        result[len] = '\0';
+                        indexName = result;
+                        free(result);
+                    } else {
+                        // Skip this message
+                        continue;
                     }
-                    std::map<string, int> :: iterator it1;
-                    it1 = poolOfBulk.find(indexName);
-                    elasticlient::SameIndexBulkData* bulk = pool[it1->second];
-                    gettimeofday(&time, NULL);
-                    long microsec = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
-                    bulk->indexDocument("docType",
-                        std::to_string(microsec) + std::to_string(bulkIndex), s);
+                } else {
+                    indexName = es_index;
                 }
 
-                // cpr::Response indexResponse = client.index("kafkabeat",
-                // "docType", msg.get_key(), msg.get_payload());
+                if(poolOfBulk.find(indexName) == poolOfBulk.end()){
+                    // New index
+                    pool[poolOfBulk.size()] = new elasticlient::SameIndexBulkData(indexName, 100);
+                    poolOfBulk[indexName] = poolOfBulk.size();
+                }
+                std::map<string, int> :: iterator it1;
+                it1 = poolOfBulk.find(indexName);
+                elasticlient::SameIndexBulkData* bulk = pool[it1->second];
+                gettimeofday(&time, NULL);
+                long microsec = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
+                bulk->indexDocument("docType",
+                std::to_string(microsec) + std::to_string(bulkIndex), s);
 
-                // Now commit the message
-                //if(indexResponse.status_code >= 200 &&
-                //indexResponse.status_code <= 300){
-                //}
                 if (bulkIndex >= bulkSize)
                 {
                     cout << "Writing bulks\n";
@@ -212,19 +210,18 @@ void BaikalbeatThread(int threadNumber){
  */
 int main(int argc, char* argv[])
 {
-    cout << "Baikalbeat (Kafka -> Elasticsearch beat, developed on C++), version 1.2" << endl;
+    cout << "Baikalbeat (Kafka -> Elasticsearch beat, developed on C++), version 1.3" << endl;
     cout << "LibertyGlobal, DataOps, Eugene Arbatsky (c) 2020-2021" << endl;
-    cout << "This version is dedicated for lg1-http-access pipeline!" << endl;
     cout << endl;
 
     po::options_description options("Options");
     options.add_options()
         ("help,h", "produce this help message")
         ("brokers,b", po::value<string>(&brokers)->required(),"the kafka broker list")
-        // ("topic,t", po::value<string>(&topic_name)->required(),"the topic from which to fetch records")
+        ("topic,t", po::value<string>(&topic_name)->required(),"the topic from which to fetch records")
         ("group-id,g", po::value<string>(&group_id)->required(),"the consumer group id")
         ("elasticsearch-url,e", po::value<string>(&es_url),"elasticsearch URL (default, http://localhost:9200/)")
-        ("elasticsearch-index,i", po::value<string>(&es_index),"elasticsearch index name (default, test-kafkabeat-cpp)")
+        ("elasticsearch-index,i", po::value<string>(&es_index),"elasticsearch index name (default, xx_index_alias field)")
         ("bulk-size,m", po::value<int>(&bulkSize),"bulkSize for Elasticsearch batches (default, 10000)")
         ("bulk-delay,s", po::value<int>(&bulkDelay),"delay (in nanoseconds) after bulk for Elasticsearch (default, 500)")
         ("threads,n", po::value<int>(&maxThreads),"number of threads for parsing (default, 5)")
