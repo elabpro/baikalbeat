@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/London
 
 RUN apt-get update && \
-    apt-get install -y build-essential git gcc cmake libmicrohttpd-dev librdkafka-dev libboost-dev libboost-system-dev libboost-thread-dev libboost-program-options-dev libssl-dev zlib1g-dev && \
+    apt-get install -y build-essential git gcc cmake libmicrohttpd-dev librdkafka-dev libboost-dev libboost-system-dev libboost-thread-dev libboost-program-options-dev libssl-dev zlib1g-dev linux-tools-generic linux-tools-$(uname -r) && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app

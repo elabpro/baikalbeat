@@ -52,8 +52,11 @@ bool running = true;
 string brokers = "127.0.0.1:9092";
 string topic_name = "test";
 string group_id = "test";
+string client_id = "baikalbeat";
 string es_url = "http://localhost:9200/";
 string es_index = "";
+string es_index_prefix = "";
+
 int bulkSize = 10000;
 int debugLevel = 0;
 int maxThreads = 5;
@@ -76,6 +79,7 @@ void BaikalbeatThread(int threadNumber){
     int indexKeySize = indexKey.length();
     elasticlient::SameIndexBulkData *pool [100];
     int mode = 0; // 0 - index is defined as variable, 1 - is taken from field
+    long lastCommit = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
 
     std::map<std::string, int> poolOfBulk;
 
@@ -87,6 +91,7 @@ void BaikalbeatThread(int threadNumber){
     Configuration config = {
         {"metadata.broker.list", brokers},
         {"group.id", group_id},
+        {"client.id", client_id},
         // Disable auto commit
         {"enable.auto.commit", false}};
     // Create the consumer
@@ -158,6 +163,7 @@ void BaikalbeatThread(int threadNumber){
                 } else {
                     indexName = es_index;
                 }
+                indexName = es_index_prefix + indexName;
 
                 if(poolOfBulk.find(indexName) == poolOfBulk.end()){
                     // New index
@@ -172,7 +178,7 @@ void BaikalbeatThread(int threadNumber){
                 bulk->indexDocument("docType",
                 std::to_string(microsec) + std::to_string(bulkIndex), s);
 
-                if (bulkIndex >= bulkSize)
+                if (bulkIndex >= bulkSize || microsec - lastCommit > 5000000)
                 {
                     cout << "Writing bulks\n";
                     std::map<string, int> :: iterator it2 = poolOfBulk.begin();
@@ -184,7 +190,6 @@ void BaikalbeatThread(int threadNumber){
                             std::cout << "When indexing " << b->size() << " documents, "
                                     << errors << " errors occured" << std::endl;
                             }
-                            usleep(bulkDelay);
                             if (errors > 0){
                                 // retry
                                 usleep(100);
@@ -195,6 +200,8 @@ void BaikalbeatThread(int threadNumber){
                                 }
                             }
                             consumer.commit(msg);
+                            usleep(bulkDelay);
+                            lastCommit = microsec;
                             b->clear();
                         }
                     }
@@ -220,8 +227,10 @@ int main(int argc, char* argv[])
         ("brokers,b", po::value<string>(&brokers)->required(),"the kafka broker list")
         ("topic,t", po::value<string>(&topic_name)->required(),"the topic from which to fetch records")
         ("group-id,g", po::value<string>(&group_id)->required(),"the consumer group id")
+        ("client-id,c", po::value<string>(&client_id),"the kafka client id (default, baikalbeat)")
         ("elasticsearch-url,e", po::value<string>(&es_url),"elasticsearch URL (default, http://localhost:9200/)")
         ("elasticsearch-index,i", po::value<string>(&es_index),"elasticsearch index name (default, xx_index_alias field)")
+        ("elasticsearch-index-prefix,p", po::value<string>(&es_index_prefix),"prefix for elasticsearch index name (ie, test-)")
         ("bulk-size,m", po::value<int>(&bulkSize),"bulkSize for Elasticsearch batches (default, 10000)")
         ("bulk-delay,s", po::value<int>(&bulkDelay),"delay (in nanoseconds) after bulk for Elasticsearch (default, 500)")
         ("threads,n", po::value<int>(&maxThreads),"number of threads for parsing (default, 5)")
