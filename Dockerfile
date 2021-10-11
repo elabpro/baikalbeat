@@ -19,9 +19,12 @@ COPY ${IMAGE_DIR}/deps /usr/src/app/
 RUN /usr/src/app/build.sh
 
 COPY ${IMAGE_DIR}/src/* /usr/src/app/baikalbeat/
-RUN ldconfig && mkdir /usr/src/app/baikalbeat/build && cd /usr/src/app/baikalbeat/build && cmake .. && make
+RUN ldconfig && mkdir /usr/src/app/baikalbeat/build && cd /usr/src/app/baikalbeat/build && cmake .. && make -j4
 
 FROM ubuntu:20.04 as prod
+RUN apt-get update && \
+    apt-get install -y linux-tools-generic linux-tools-$(uname -r) && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY --from=build /usr/local/ /usr/local/
 COPY --from=build /usr/src/app/baikalbeat/build/baikalbeat /
 RUN apt-get update && \

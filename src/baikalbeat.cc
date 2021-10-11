@@ -208,6 +208,38 @@ void BaikalbeatThread(int threadNumber){
                     bulkIndex = 0;
                 }
             }
+        }else{
+            gettimeofday(&time, NULL);
+            long microsec = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
+            if ( microsec - lastCommit > 5000000)
+            {
+                cout << "Writing bulks\n";
+                std::map<string, int> :: iterator it2 = poolOfBulk.begin();
+                for (int i = 0; it2 != poolOfBulk.end(); it2++, i++) {
+                    elasticlient::SameIndexBulkData* b = pool[it2->second];
+                    if(b->size() > 0){
+                        size_t errors = bulkIndexer.perform(*b);
+                        if(debugLevel){
+                        std::cout << "When indexing " << b->size() << " documents, "
+                                << errors << " errors occured" << std::endl;
+                        }
+                        if (errors > 0){
+                            // retry
+                            usleep(100);
+                            size_t errors = bulkIndexer.perform(*b);
+                            if(debugLevel){
+                            std::cout << "When indexing " << b->size() << " documents, "
+                                << errors << " errors occured" << std::endl;
+                            }
+                        }
+                        consumer.commit(msg);
+                        usleep(bulkDelay);
+                        lastCommit = microsec;
+                        b->clear();
+                    }
+                }
+                bulkIndex = 0;
+            }
         }
     }
 }
