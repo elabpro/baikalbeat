@@ -1,3 +1,10 @@
+FROM ubuntu:20.04 as prod
+RUN apt-get update && \
+    apt-get install -y libmicrohttpd12 librdkafka1 libboost-system1.71.0 \
+    libboost-thread1.71.0 libboost-program-options1.71.0 libssl1.1 zlib1g \
+    linux-tools-generic linux-tools-$(uname -r) liblsan0 strace && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 FROM ubuntu:20.04 as build
 
 ARG IMAGE_DIR
@@ -21,13 +28,7 @@ RUN /usr/src/app/build.sh
 COPY ${IMAGE_DIR}/src/* /usr/src/app/baikalbeat/
 RUN ldconfig && mkdir /usr/src/app/baikalbeat/build && cd /usr/src/app/baikalbeat/build && cmake .. && make -j4
 
-FROM ubuntu:20.04 as prod
-RUN apt-get update && \
-    apt-get install -y linux-tools-generic linux-tools-$(uname -r) && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+FROM prod as prod-final
 COPY --from=build /usr/local/ /usr/local/
 COPY --from=build /usr/src/app/baikalbeat/build/baikalbeat /
-RUN apt-get update && \
-    apt-get install -y libmicrohttpd12 librdkafka1 libboost-system1.71.0 libboost-thread1.71.0 libboost-program-options1.71.0 libssl1.1 zlib1g && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN /usr/sbin/ldconfig

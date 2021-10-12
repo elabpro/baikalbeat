@@ -61,6 +61,7 @@ int bulkSize = 10000;
 int debugLevel = 0;
 int maxThreads = 5;
 int bulkDelay = 500; // in nanosecs
+int dryRun = 0;
 
 /// Very simple log callback (only print message to stdout)
 void logCallback(elasticlient::LogLevel logLevel, const std::string &msg) {
@@ -83,7 +84,7 @@ void BaikalbeatThread(int threadNumber){
 
     std::map<std::string, int> poolOfBulk;
 
-    if(es_index.length() > 0){
+    if(es_index.length() == 0){
         mode = 1;
     }
 
@@ -92,8 +93,10 @@ void BaikalbeatThread(int threadNumber){
         {"metadata.broker.list", brokers},
         {"group.id", group_id},
         {"client.id", client_id},
+        {"enable.auto.commit", true},
+        {"auto.commit.interval.ms", 1000}};
         // Disable auto commit
-        {"enable.auto.commit", false}};
+        // {"enable.auto.commit", false}};
     // Create the consumer
     Consumer consumer(config);
     // Print the assigned partitions on assignment
@@ -123,7 +126,7 @@ void BaikalbeatThread(int threadNumber){
     while (running)
     {
         // Try to consume a message
-        Message msg = consumer.poll();
+        Message msg = consumer.poll(std::chrono::milliseconds(100));
         if (msg)
         {
             // If we managed to get a message
@@ -140,86 +143,89 @@ void BaikalbeatThread(int threadNumber){
                 bulkIndex++;
                 Document d;
                 std::string s = msg.get_payload();
-                std::string indexName = "";                
-                if (msg.get_key())
-                {
-                    cout << msg.get_key() << " -> ";
-                }
-                if( mode == 1){
-                    const char* s_str = s.c_str();
-                    const char* pos1 = strstr(s_str,indexKey.c_str());
-                    const char* pos2 = strstr((char*) (pos1 + indexKeySize +3) , delimiter);
-                    size_t len = (size_t) (pos2 - pos1 - indexKeySize - 3);
-                    char *result = (char*) malloc(len + 1);
-                    if(result){
-                        memcpy(result,(char*)(pos1+indexKeySize+3),len);
-                        result[len] = '\0';
-                        indexName = result;
-                        free(result);
-                    } else {
-                        // Skip this message
-                        continue;
-                    }
-                } else {
-                    indexName = es_index;
-                }
-                indexName = es_index_prefix + indexName;
-
-                if(poolOfBulk.find(indexName) == poolOfBulk.end()){
-                    // New index
-                    pool[poolOfBulk.size()] = new elasticlient::SameIndexBulkData(indexName, 100);
-                    poolOfBulk[indexName] = poolOfBulk.size();
-                }
-                std::map<string, int> :: iterator it1;
-                it1 = poolOfBulk.find(indexName);
-                elasticlient::SameIndexBulkData* bulk = pool[it1->second];
+                std::string indexName = "";
                 gettimeofday(&time, NULL);
-                long microsec = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
-                bulk->indexDocument("docType",
-                std::to_string(microsec) + std::to_string(bulkIndex), s);
-
-                if (bulkIndex >= bulkSize || microsec - lastCommit > 5000000)
-                {
-                    cout << "Writing bulks\n";
-                    std::map<string, int> :: iterator it2 = poolOfBulk.begin();
-                    for (int i = 0; it2 != poolOfBulk.end(); it2++, i++) {
-                        elasticlient::SameIndexBulkData* b = pool[it2->second];
-                        if(b->size() > 0){
-                            size_t errors = bulkIndexer.perform(*b);
-                            if(debugLevel){
-                            std::cout << "When indexing " << b->size() << " documents, "
-                                    << errors << " errors occured" << std::endl;
-                            }
-                            if (errors > 0){
-                                // retry
-                                usleep(100);
+                long recMicrosec = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
+                if(dryRun == 0){
+                    if(debugLevel){ std::cout << s << std::endl; }
+                    if( mode == 1){
+                        const char* s_str = s.c_str();
+                        const char* pos1 = strstr(s_str,indexKey.c_str());
+                        const char* pos2 = strstr((char*) (pos1 + indexKeySize +3) , delimiter);
+                        if(pos2 != NULL && pos1 != NULL){
+                        size_t len = (size_t) (pos2 - pos1 - indexKeySize - 3);
+                        char *result = (char*) malloc(len + 1);
+                        if(result){
+                            memcpy(result,(char*)(pos1+indexKeySize+3),len);
+                            result[len] = '\0';
+                            indexName = result;
+                            free(result);
+                        } else {
+                            // Skip this message
+                            continue;
+                        }}else{
+                            // Skip this message
+                            continue;
+                        }
+                    } else {
+                        indexName = es_index;
+                    }
+                    indexName = es_index_prefix + indexName;
+                    if(poolOfBulk.find(indexName) == poolOfBulk.end()){
+                        // New index
+                        if(debugLevel){
+                            std::cout << "Adding new index " << indexName << " to the pool " << poolOfBulk.size() << std::endl;
+                        }
+                        pool[poolOfBulk.size()] = new elasticlient::SameIndexBulkData(indexName, 10000);
+                        poolOfBulk[indexName] = poolOfBulk.size();
+                    }
+                    std::map<string, int> :: iterator it1;
+                    it1 = poolOfBulk.find(indexName);
+                    elasticlient::SameIndexBulkData* bulk = pool[it1->second];
+                    if(debugLevel){ std::cout << "Add document to pool" << std::endl; }
+                    bulk->indexDocument("docType",std::to_string(recMicrosec) + std::to_string(bulkIndex), s);
+                    if ( bulkIndex >= bulkSize || recMicrosec - lastCommit > 5000000){
+                        std::map<string, int> :: iterator it2 = poolOfBulk.begin();
+                        for (int i = 0; it2 != poolOfBulk.end(); it2++, i++) {
+                            elasticlient::SameIndexBulkData* b = pool[it2->second];
+                            if(b->size() > 0){
                                 size_t errors = bulkIndexer.perform(*b);
                                 if(debugLevel){
+                                std::cout << "Writing bulk(in main cycle) " << i << std::endl;
                                 std::cout << "When indexing " << b->size() << " documents, "
-                                    << errors << " errors occured" << std::endl;
+                                        << errors << " errors occured" << std::endl;
                                 }
+                                if (errors > 0){
+                                    // retry
+                                    usleep(100);
+                                    size_t errors = bulkIndexer.perform(*b);
+                                    if(debugLevel){
+                                    std::cout << "When indexing " << b->size() << " documents, "
+                                        << errors << " errors occured" << std::endl;
+                                    }
+                                }
+                                usleep(bulkDelay);
+                                lastCommit = recMicrosec;
+                                b->clear();
                             }
-                            consumer.commit(msg);
-                            usleep(bulkDelay);
-                            lastCommit = microsec;
-                            b->clear();
                         }
+                        // consumer.commit(msg);
+                        bulkIndex = 0;
                     }
-                    bulkIndex = 0;
                 }
             }
         }else{
             gettimeofday(&time, NULL);
-            long microsec = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
-            if ( microsec - lastCommit > 5000000)
+            long recMicrosec = ((unsigned long long)time.tv_sec * 1000000) + time.tv_usec;
+            if (dryRun == 0 && recMicrosec - lastCommit > 5000000)
             {
-                cout << "Writing bulks\n";
                 std::map<string, int> :: iterator it2 = poolOfBulk.begin();
                 for (int i = 0; it2 != poolOfBulk.end(); it2++, i++) {
                     elasticlient::SameIndexBulkData* b = pool[it2->second];
                     if(b->size() > 0){
                         size_t errors = bulkIndexer.perform(*b);
                         if(debugLevel){
+                        std::cout << "Writing bulk(timeout) " << i << std::endl;
                         std::cout << "When indexing " << b->size() << " documents, "
                                 << errors << " errors occured" << std::endl;
                         }
@@ -232,12 +238,12 @@ void BaikalbeatThread(int threadNumber){
                                 << errors << " errors occured" << std::endl;
                             }
                         }
-                        consumer.commit(msg);
                         usleep(bulkDelay);
-                        lastCommit = microsec;
+                        lastCommit = recMicrosec;
                         b->clear();
                     }
                 }
+                // consumer.commit(msg);
                 bulkIndex = 0;
             }
         }
@@ -249,7 +255,7 @@ void BaikalbeatThread(int threadNumber){
  */
 int main(int argc, char* argv[])
 {
-    cout << "Baikalbeat (Kafka -> Elasticsearch beat, developed on C++), version 1.3" << endl;
+    cout << "Baikalbeat (Kafka -> Elasticsearch beat, developed on C++), version 1.7" << endl;
     cout << "LibertyGlobal, DataOps, Eugene Arbatsky (c) 2020-2021" << endl;
     cout << endl;
 
@@ -267,6 +273,7 @@ int main(int argc, char* argv[])
         ("bulk-delay,s", po::value<int>(&bulkDelay),"delay (in nanoseconds) after bulk for Elasticsearch (default, 500)")
         ("threads,n", po::value<int>(&maxThreads),"number of threads for parsing (default, 5)")
         ("debug,d", po::value<int>(&debugLevel),"debug (default, 0 - no debug)")
+        ("dry-run", po::value<int>(&dryRun),"dry run for Kafka without ES (default, 0 - no dry)")
         ;
 
     po::variables_map vm;

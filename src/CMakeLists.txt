@@ -25,7 +25,7 @@ set(CMAKE_C_FLAGS
     CACHE STRING "Flags used by the C compiler during builds."
     FORCE)
 
-set(CMAKE_CXX_FLAGS
-    "-fsanitize=leak -fno-omit-frame-pointer -g -O1"
-    CACHE STRING "Flags used by the C compiler during builds."
-    FORCE)
+#set(CMAKE_CXX_FLAGS
+#    "-fsanitize=leak -fno-omit-frame-pointer -g -O1"
+#    CACHE STRING "Flags used by the C compiler during builds."
+#    FORCE)
