@@ -13,7 +13,6 @@ target_link_libraries(baikalbeat
                       ${ELASTICLIENT_LIBRARIES}
                       cppkafka
                       jsoncpp
-                      elasticlient
                       cpr
                       pthread
                       boost_program_options

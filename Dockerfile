@@ -26,9 +26,10 @@ COPY ${IMAGE_DIR}/deps /usr/src/app/
 RUN /usr/src/app/build.sh
 
 COPY ${IMAGE_DIR}/src/* /usr/src/app/baikalbeat/
-RUN ldconfig && mkdir /usr/src/app/baikalbeat/build && cd /usr/src/app/baikalbeat/build && cmake .. && make -j4
+RUN rm -f /usr/src/app/baikalbeat/CMakeCache.txt
+RUN ldconfig && cd /usr/src/app/baikalbeat && cmake . && make -j4
 
 FROM prod as prod-final
 COPY --from=build /usr/local/ /usr/local/
-COPY --from=build /usr/src/app/baikalbeat/build/baikalbeat /
+COPY --from=build /usr/src/app/baikalbeat/baikalbeat /
 RUN /usr/sbin/ldconfig
