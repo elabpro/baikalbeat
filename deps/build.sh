@@ -5,11 +5,13 @@
 #cd ..
 #git clone https://github.com/mfontanini/cppkafka
 #git clone https://github.com/Tencent/rapidjson
-#mkdir /usr/src/app/elasticlient/build
-mkdir  /usr/src/app/cppkafka/build /usr/src/app/rapidjson/build
-#cd /usr/src/app/elasticlient/build && cmake .. && make -j4 && make install
+#git clone https://github.com/whoshuu/cpr
+#mkdir /usr/src/app/cpr/build
+mkdir  /usr/src/app/cppkafka/build
+#mkdir  /usr/src/app/rapidjson/build
+#cd /usr/src/app/cpr/build && cmake .. && make -j4 && make install
 cd /usr/src/app/cppkafka/build && cmake .. && make -j4 && make install
-cd /usr/src/app/rapidjson/build && cmake .. && make -j4 && make install
+#cd /usr/src/app/rapidjson/build && cmake .. && make -j4 && make install
 #rm -R /usr/src/app/elasticlient
 rm -R /usr/src/app/cppkafka
-rm -R /usr/src/app/rapidjson
+#rm -R /usr/src/app/rapidjson

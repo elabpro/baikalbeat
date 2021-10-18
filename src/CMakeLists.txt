@@ -12,8 +12,6 @@ add_executable(baikalbeat
 target_link_libraries(baikalbeat
                       ${ELASTICLIENT_LIBRARIES}
                       cppkafka
-                      jsoncpp
-                      cpr
                       pthread
                       boost_program_options
                       boost_system
