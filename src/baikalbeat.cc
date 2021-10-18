@@ -13,17 +13,14 @@
 #include <vector>
 #include <iostream>
 #include <map>
+#include <fstream>
 
-#include <cpr/response.h>
 #include <cppkafka/cppkafka.h>
 #include <cppkafka/consumer.h>
 #include <cppkafka/configuration.h>
 #include <sys/time.h>
 #include <unistd.h>
 
-#include <rapidjson/document.h>
-#include <rapidjson/writer.h>
-#include <rapidjson/stringbuffer.h>
 #include <boost/program_options.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/bind.hpp>
@@ -40,8 +37,6 @@ using cppkafka::Configuration;
 using cppkafka::Consumer;
 using cppkafka::Message;
 using cppkafka::TopicPartitionList;
-
-using namespace rapidjson;
 
 namespace po = boost::program_options;
 
@@ -118,7 +113,6 @@ void BaikalbeatThread(int threadNumber) {
                 }
             } else {
                 bulkIndex++;
-                Document d;
                 std::string s = msg.get_payload();
                 std::string indexName = "";
                 gettimeofday(&time, NULL);
