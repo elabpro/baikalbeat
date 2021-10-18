@@ -48,13 +48,14 @@ namespace po = boost::program_options;
 bool running = true;
 
 string brokers = "127.0.0.1:9092";
-string topic_name = "test";
+string topic_name = "";
 string group_id = "test";
 string client_id = "baikalbeat";
 string es_url = "http://localhost:9200/";
 string es_index = "";
 string es_index_prefix = "";
-string version = "1.8.5";
+string version = "1.9";
+string config = "";
 
 int bulkSize = 10000;
 int debugLevel = 0;
@@ -157,10 +158,15 @@ void BaikalbeatThread(int threadNumber) {
                     bulkBody += "{\"index\":{\"_index\":\"" + indexName + "\"}}\n" + s + "\n";
                     if (bulkIndex > bulkSize || recMicrosec - lastCommit > 50000000) {
                         try {
-                            http::Request request(es_url);
-                            const auto response = request.send("POST", bulkBody,{"Content-type: application/json"});
-                            if( response.status != 200){
-                                std::cout << "ERROR: bulk wasn't written\n" << response.body.data() << std::endl;
+                            while (1) {
+                                http::Request request(es_url);
+                                const auto response = request.send("POST", bulkBody,{"Content-type: application/json"});
+                                if (response.status != 200) {
+                                    std::cout << "ERROR: bulk wasn't written\n" << response.body.data() << std::endl;
+                                } else {
+                                    break;
+                                }
+                                usleep(bulkDelay * 10);
                             }
                             //                            std::cout << response.body.data() << std::endl;
                         } catch (const std::exception& e) {
@@ -202,9 +208,10 @@ int main(int argc, char* argv[]) {
     po::options_description options("Options");
     options.add_options()
             ("help,h", "produce this help message")
-            ("brokers,b", po::value<string>(&brokers)->required(), "the kafka broker list")
-            ("topic,t", po::value<string>(&topic_name)->required(), "the topic from which to fetch records")
-            ("group-id,g", po::value<string>(&group_id)->required(), "the consumer group id")
+            ("config", po::value<std::string>(), "Config file")
+            ("brokers,b", po::value<string>(&brokers), "the kafka broker list")
+            ("topic,t", po::value<string>(&topic_name), "the topic from which to fetch records")
+            ("group-id,g", po::value<string>(&group_id), "the consumer group id")
             ("client-id,c", po::value<string>(&client_id), "the kafka client id (default, baikalbeat)")
             ("elasticsearch-url,e", po::value<string>(&es_url), "elasticsearch URL (default, http://localhost:9200/)")
             ("elasticsearch-index,i", po::value<string>(&es_index), "elasticsearch index name (default, xx_index_alias field)")
@@ -215,16 +222,38 @@ int main(int argc, char* argv[]) {
             ("debug,d", po::value<int>(&debugLevel), "debug (default, 0 - no debug)")
             ("dry-run", po::value<int>(&dryRun), "dry run for Kafka without ES (default, 0 - no dry)")
             ;
-
+    po::options_description fileOptions{"File"};
+    fileOptions.add_options()
+            ("brokers", po::value<string>(&brokers), "the kafka broker list")
+            ("topic", po::value<string>(&topic_name), "the topic from which to fetch records")
+            ("group-id", po::value<string>(&group_id), "the consumer group id")
+            ("client-id", po::value<string>(&client_id), "the kafka client id (default, baikalbeat)")
+            ("elasticsearch-url", po::value<string>(&es_url), "elasticsearch URL (default, http://localhost:9200/)")
+            ("elasticsearch-index", po::value<string>(&es_index), "elasticsearch index name (default, xx_index_alias field)")
+            ("elasticsearch-index-prefix", po::value<string>(&es_index_prefix), "prefix for elasticsearch index name (ie, test-)")
+            ("bulk-size", po::value<int>(&bulkSize), "bulkSize for Elasticsearch batches (default, 10000)")
+            ("bulk-delay", po::value<int>(&bulkDelay), "delay (in microseconds) after bulk for Elasticsearch (default, 500)")
+            ("threads", po::value<int>(&maxThreads), "number of threads for parsing (default, 5)")
+            ("debug", po::value<int>(&debugLevel), "debug (default, 0 - no debug)")
+            ;
     po::variables_map vm;
 
     try {
         po::store(po::command_line_parser(argc, argv).options(options).run(), vm);
+        if (vm.count("config")) {
+            std::ifstream ifs{vm["config"].as<std::string>().c_str()};
+            if (ifs)
+                store(po::parse_config_file(ifs, fileOptions), vm);
+        }
         po::notify(vm);
     } catch (exception &ex) {
         cout << "Error parsing options: " << ex.what() << endl;
         cout << endl;
         cout << options << endl;
+        return 1;
+    }
+    if (topic_name.length() == 0 || es_url.length() == 0) {
+        std::cout << "ERROR: No enogh variables!" << std::endl;
         return 1;
     }
 
