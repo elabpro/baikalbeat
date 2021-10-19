@@ -164,7 +164,7 @@ void BaikalbeatThread(int threadNumber) {
                             }
                             //                            std::cout << response.body.data() << std::endl;
                         } catch (const std::exception& e) {
-                            std::cout << "ERROR:" << e.what() << std::endl;
+                            std::cout << "ERROR: " << e.what() << std::endl;
                         }
                         bulkBody = "";
                         usleep(bulkDelay);

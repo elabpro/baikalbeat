@@ -10,7 +10,8 @@
 mkdir  /usr/src/app/cppkafka/build
 #mkdir  /usr/src/app/rapidjson/build
 #cd /usr/src/app/cpr/build && cmake .. && make -j4 && make install
-cd /usr/src/app/cppkafka/build && cmake .. && make -j4 && make install
+#cd /usr/src/app/cppkafka/build && cmake -DCPPKAFKA_BUILD_SHARED=OFF -DCPPKAFKA_BOOST_STATIC_LIBS=ON -DCPPKAFKA_RDKAFKA_STATIC_LIB=ON .. && make -j4 && make install
+cd /usr/src/app/cppkafka/build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j4 && make install
 #cd /usr/src/app/rapidjson/build && cmake .. && make -j4 && make install
 #rm -R /usr/src/app/elasticlient
 rm -R /usr/src/app/cppkafka
