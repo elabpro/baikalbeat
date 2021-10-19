@@ -1,8 +1,7 @@
 FROM ubuntu:20.04 as prod
 RUN apt-get update && \
     apt-get install -y libmicrohttpd12 librdkafka1 libboost-system1.71.0 \
-    libboost-thread1.71.0 libboost-program-options1.71.0 libssl1.1 zlib1g \
-    linux-tools-generic linux-tools-$(uname -r) liblsan0 strace && \
+    libboost-thread1.71.0 libboost-program-options1.71.0 libssl1.1 zlib1g && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM ubuntu:20.04 as build
