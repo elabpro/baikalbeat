@@ -1,4 +1,5 @@
-/src/build/
-/src/CMakefiles/
-/src/nbproject/
-/deps/
+.idea
+.vscode
+.bundle
+*.swp
+*~
