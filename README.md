@@ -2,7 +2,8 @@
 Kafkabeat on C++
 
 ## Options
---------
+
+```text
   -h [ --help ]                         produce this help message
   -b [ --brokers ] arg                  the kafka broker list
   -t [ --topic ] arg                    the topic from which to fetch records
@@ -25,3 +26,4 @@ Kafkabeat on C++
   -d [ --debug ] arg                    debug (default, 0 - no debug)
   --dry-run arg                         dry run for Kafka without ES (default, 
                                         0 - no dry)
+```
