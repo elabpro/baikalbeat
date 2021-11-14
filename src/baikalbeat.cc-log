@@ -3,7 +3,7 @@
  * -----------------------------------------------------------------------------
  * Baikalbeat
  * Beat for reading messages from Kafka and to ingest them in ElasticSearch
- *
+ * 
  * author: Eugene Arbatsky, DataOps
  * date  : 2020-04-22
  * -----------------------------------------------------------------------------
@@ -25,7 +25,6 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/bind.hpp>
 #include <boost/thread/thread.hpp>
-#include <csignal>
 
 #include "HTTPRequest.hpp"
 
@@ -43,8 +42,6 @@ namespace po = boost::program_options;
 
 bool running = true;
 
-string version = "1.10";
-
 string brokers = "127.0.0.1:9092";
 string topic_name = "";
 string group_id = "test";
@@ -52,23 +49,16 @@ string client_id = "baikalbeat";
 string es_url = "http://localhost:9200/";
 string es_index = "";
 string es_index_prefix = "";
+string version = "1.9";
 string config = "";
 
 int bulkSize = 10000;
+int debugLevel = 0;
 int maxThreads = 5;
 int bulkDelay = 500; // in nanosecs
 int dryRun = 0;
 
-// Telemetry
-int debugLevel = 0;
-int sigTerm = 0;
-
-/// Very simple signal handler
-void signalHandler( int signum ) {
-    sigTerm = 1;
-    running = false;
-    cout << "SIGTERM|SIGINT is recieved. Going down" << endl;
-}
+/// Very simple log callback (only print message to stdout)
 
 /**
  * The main thread
@@ -86,8 +76,6 @@ void BaikalbeatThread(int threadNumber) {
         mode = 1;
     }
 
-    signal(SIGTERM, signalHandler);
-    signal(SIGINT, signalHandler);
     // Construct the configuration
     Configuration config = {
         {"metadata.broker.list", brokers},
@@ -162,7 +150,7 @@ void BaikalbeatThread(int threadNumber) {
                     }
                     indexName = es_index_prefix + indexName;
                     bulkBody += "{\"index\":{\"_index\":\"" + indexName + "\"}}\n" + s + "\n";
-                    if (bulkIndex > bulkSize || recMicrosec - lastCommit > 50000000 || sigTerm == 1) {
+                    if (bulkIndex > bulkSize || recMicrosec - lastCommit > 50000000) {
                         try {
                             while (1) {
                                 http::Request request(es_url);
@@ -207,12 +195,8 @@ void BaikalbeatThread(int threadNumber) {
  * Command line processor, options, configuration. Run threads
  */
 int main(int argc, char* argv[]) {
-
     cout << "Baikalbeat (Kafka -> Elasticsearch beat, developed on C++), version " << version << endl;
-    cout << "LibertyGlobal, DataOps " << endl;
-    cout << "\tEugene Arbatsky (c) 2020-2021" << endl;
-    cout << "\tDmitry Iliyn, refactoring and tunning" << endl;
-    cout << "\tMikhail Drotikov, testing" << endl;
+    cout << "LibertyGlobal, DataOps, Eugene Arbatsky (c) 2020-2021" << endl;
     cout << endl;
 
     po::options_description options("Options");
@@ -263,8 +247,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     if (topic_name.length() == 0 || es_url.length() == 0) {
-        std::cout << "ERROR: No enough variables!" << std::endl;
-        cout << options << endl;
+        std::cout << "ERROR: No enogh variables!" << std::endl;
         return 1;
     }
 
@@ -278,8 +261,8 @@ int main(int argc, char* argv[]) {
 
 
     /*
-     * This will start the ioService processing loop. All tasks
-     * assigned with ioService.post() will start executing.
+     * This will start the ioService processing loop. All tasks 
+     * assigned with ioService.post() will start executing. 
      */
     boost::asio::io_service::work work(ioService);
 
@@ -291,7 +274,7 @@ int main(int argc, char* argv[]) {
 
 
     /*
-     * Will wait till all the threads in the thread pool are finished with
+     * Will wait till all the threads in the thread pool are finished with 
      * their assigned tasks and 'join' them. Just assume the threads inside
      * the threadpool will be destroyed by this method.
      */
