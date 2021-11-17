@@ -8,7 +8,7 @@ if [ -z "${IMAGE_NAME}" ]; then
 fi
 
 if [ -z "${IMAGE_VERSION}" ]; then
-  IMAGE_VERSION="1.9"
+  IMAGE_VERSION=`sed -ne 's/string version = "\(.*\)";/\1/p' src/baikalbeat.cc`
 fi
 
 BUILD_ARGS="--network host"
