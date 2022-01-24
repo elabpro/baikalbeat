@@ -43,7 +43,7 @@ namespace po = boost::program_options;
 
 bool running = true;
 
-string version = "1.10";
+string version = "1.12";
 
 string brokers = "127.0.0.1:9092";
 string topic_name = "";
@@ -55,19 +55,45 @@ string es_index_prefix = "";
 string config = "";
 
 int bulkSize = 10000;
+int bulkSizeMax = bulkSize;
 int maxThreads = 5;
 int bulkDelay = 500; // in nanosecs
 int dryRun = 0;
+int maxRetries = 0;
 
 // Telemetry
+#include "GTypes.h"
+#include "P7_Cproxy.h"
 int debugLevel = 0;
 int sigTerm = 0;
+static hP7_Client       g_hClient = NULL;
+static hP7_Telemetry    g_hTel    = NULL;
+static hP7_Trace        g_hTrace  = NULL;
+static hP7_Trace_Module g_pModule = NULL;
 
 /// Very simple signal handler
 void signalHandler( int signum ) {
     sigTerm = 1;
     running = false;
     cout << "SIGTERM|SIGINT is recieved. Going down" << endl;
+}
+
+void alterBulkSize(){
+   double load[3]; 
+    
+   if (getloadavg(load, 3) != -1){  
+      if(load[0] > 100){
+         if(bulkSize > bulkSizeMax / 3){
+             bulkSize -= bulkSizeMax / 10;
+         }
+      }else{
+         if(bulkSize < bulkSizeMax){
+            bulkSize += bulkSizeMax/10;
+         }else{
+            bulkSize = bulkSizeMax;
+         }
+      }
+   }
 }
 
 /**
@@ -80,7 +106,11 @@ void BaikalbeatThread(int threadNumber) {
     int indexKeySize = indexKey.length();
     int mode = 0; // 0 - index is defined as variable, 1 - is taken from field
     long lastCommit = ((unsigned long long) time.tv_sec * 1000000) + time.tv_usec;
-    std::string bulkBody = "";
+    string bulkBody = "";
+    string debug_msg = "";
+    long commitIinterval = 5000; // mili sec
+    long commitIintervalns = commitIinterval * 1000; // nano sec
+    
     bulkBody[0] = 0x00;
     if (es_index.length() == 0) {
         mode = 1;
@@ -94,12 +124,14 @@ void BaikalbeatThread(int threadNumber) {
         {"group.id", group_id},
         {"client.id", client_id + "-" + version},
         {"enable.auto.commit", true},
-        {"auto.commit.interval.ms", 1000}
+        {"auto.commit.interval.ms", commitIinterval}
     };
     Consumer consumer(config);
     // Print the assigned partitions on assignment
     consumer.set_assignment_callback([](const TopicPartitionList & partitions) {
-        cout << "Got assigned: " << partitions << endl;
+        std::stringstream msg;
+        msg << partitions;
+        P7_TRACE_ADD(g_hTrace, 0, P7_TRACE_LEVEL_TRACE, g_pModule, TM("Kafka assigned partitions %s"),  msg.str().c_str());
     });
 
     // Print the revoked partitions on revocation
@@ -162,9 +194,11 @@ void BaikalbeatThread(int threadNumber) {
                     }
                     indexName = es_index_prefix + indexName;
                     bulkBody += "{\"index\":{\"_index\":\"" + indexName + "\"}}\n" + s + "\n";
-                    if (bulkIndex > bulkSize || recMicrosec - lastCommit > 50000000 || sigTerm == 1) {
+                    if (bulkIndex > bulkSize || recMicrosec - lastCommit > commitIinterval || sigTerm == 1) {
                         try {
-                            while (1) {
+                            int retries = 0;
+                            while (maxRetries > retries || maxRetries == 0) {
+                                retries ++;
                                 http::Request request(es_url);
                                 const auto response = request.send("POST", bulkBody,{"Content-type: application/json"});
                                 if (response.status != 200) {
@@ -172,8 +206,9 @@ void BaikalbeatThread(int threadNumber) {
                                 } else {
                                     break;
                                 }
-                                usleep(bulkDelay * 10);
+                                usleep(bulkDelay * 10 + retries * 10);
                             }
+                            alterBulkSize();
                             //                            std::cout << response.body.data() << std::endl;
                         } catch (const std::exception& e) {
                             std::cout << "ERROR: " << e.what() << std::endl;
@@ -188,7 +223,7 @@ void BaikalbeatThread(int threadNumber) {
         } else {
             gettimeofday(&time, NULL);
             long recMicrosec = ((unsigned long long) time.tv_sec * 1000000) + time.tv_usec;
-            if (dryRun == 0 && recMicrosec - lastCommit > 500000 && bulkBody.length() > 0) {
+            if (dryRun == 0 && recMicrosec - lastCommit > commitIinterval && bulkBody.length() > 0) {
                 try {
                     http::Request request(es_url);
                     const auto response = request.send("POST", bulkBody,{"Content-type: application/json"});
@@ -231,6 +266,7 @@ int main(int argc, char* argv[]) {
             ("threads,n", po::value<int>(&maxThreads), "number of threads for parsing (default, 5)")
             ("debug,d", po::value<int>(&debugLevel), "debug (default, 0 - no debug)")
             ("dry-run", po::value<int>(&dryRun), "dry run for Kafka without ES (default, 0 - no dry)")
+            ("maxretries",po::value<int>(&maxRetries), "maximum number of bulk retries before skip a bulk (default, 0 - no limit)")
             ;
     po::options_description fileOptions{"File"};
     fileOptions.add_options()
@@ -245,6 +281,7 @@ int main(int argc, char* argv[]) {
             ("bulk-delay", po::value<int>(&bulkDelay), "delay (in microseconds) after bulk for Elasticsearch (default, 500)")
             ("threads", po::value<int>(&maxThreads), "number of threads for parsing (default, 5)")
             ("debug", po::value<int>(&debugLevel), "debug (default, 0 - no debug)")
+            ("maxretries",po::value<int>(&maxRetries), "maximum number of bulk retries before skip a bulk (default, 0 - no limit)")
             ;
     po::variables_map vm;
 
@@ -263,12 +300,33 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     if (topic_name.length() == 0 || es_url.length() == 0) {
-        std::cout << "ERROR: No enough variables!" << std::endl;
+        cout << "ERROR: No enough variables!" << endl;
+        cout << "Topic: " << topic_name << endl;
+        cout << "ES: " << es_url << endl;
         cout << options << endl;
         return 1;
     }
 
     es_url += "/_bulk";
+
+    //create client
+    g_hClient = P7_Client_Create(TM("/P7.Sink=Console /P7.Pool=16000"));
+    //using the client create telemetry & trace channels
+    g_hTel    = P7_Telemetry_Create(g_hClient, TM("TelemetryChannel"), NULL);
+    g_hTrace  = P7_Trace_Create(g_hClient, TM("TraceChannel"), NULL);
+
+    if (    (NULL == g_hClient)
+         || (NULL == g_hTel)
+         || (NULL == g_hTrace)
+       )
+    {
+        cout << "ERROR: P7 Initialization error" << endl;
+        exit(1);
+    }
+    //register current application module (it isn't obligatory)
+    g_pModule = P7_Trace_Register_Module(g_hTrace, TM("Main"));
+    //register current application thread (it isn't obligatory)
+    P7_Trace_Register_Thread(g_hTrace, TM("Main"), 0);
 
     /*
      * Create an asio::io_service and a thread_group (through pool in essence)

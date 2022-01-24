@@ -3,13 +3,21 @@
 DIR=`dirname $0`
 cd $DIR || exit 1
 
-cd src || exit 1
+cd deps || exit 1
 
 echo "* Clone: cppkafka"
 if [ ! -d 'cppkafka' ]; then
   git clone "https://github.com/mfontanini/cppkafka"
 fi
 
+echo "* Build p7"
+if [ -d 'p7' ]; then
+  cd p7
+  mkdir -p Build
+  cmake -S Sources -B build
+  cd build
+  make
+fi
 #echo "* Cmake: cppkafka"
 #cd cppkafka || exit 1
 #mkdir -p build
